@@ -100,6 +100,20 @@ class DesktopSteamLaunchTest(unittest.TestCase):
         os.mkfifo(self.root / '.steam/steam.pipe')
         (self.root / '.steam/steam.pid').write_text(str(os.getpid()))
 
+    def test_keyboard_opens_in_the_running_client(self):
+        self._running_client()
+        result = self.launch('desktop', 'steam://open/keyboard')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines(), ['-nobigpicture', '-no-cef-sandbox', '-cef-ozone-platform=x11',
+                                                   '-cef-disable-gpu', 'steam://open/keyboard'])
+
+    def test_keyboard_never_starts_steam(self):
+        result = self.launch('desktop', 'steam://open/keyboard')
+        self.assertEqual(result.returncode, 3, result.stderr)
+        self.assertEqual(result.stdout, '')
+        self.assertFalse((self.root / 'cache/droiddeck/steam-desktop.lock').exists())
+        self.assertFalse((self.session / 'steam-launch').exists())
+
     def test_bottom_screen_desktop_hands_games_to_the_running_client(self):
         self._running_client()
         self.env['BL_BOTTOM_DESKTOP'] = '1'

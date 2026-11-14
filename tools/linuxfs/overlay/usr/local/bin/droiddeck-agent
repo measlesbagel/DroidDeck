@@ -1187,13 +1187,13 @@ def answer(agent_dir, path):
     write_json(agent_dir / "resp" / (rid + ".json"), result)
 
 
-def serve(agent_dir, focus=True, poll=0.1):
+def serve(agent_dir, focus=True, poll=0.1, keyboard=None):
     (agent_dir / "req").mkdir(parents=True, exist_ok=True)
     (agent_dir / "resp").mkdir(parents=True, exist_ok=True)
     can_focus = focus and bool(os.environ.get("DISPLAY"))
     if can_focus:
         FocusWatcher(agent_dir / "focus.json").start()
-    if focus:
+    if focus if keyboard is None else keyboard:
         KeyboardWatcher(agent_dir).start()
     write_json(agent_dir / "hello.json", {"pid": os.getpid(), "version": VERSION, "started": int(time.time() * 1000),
                                           "displays": displays(), "focus": can_focus})
@@ -1301,7 +1301,8 @@ def main(argv):
             return 0 if steam_clear_pending_interstitial(Path(base) / "agent", argv[1]) else 1
         except (AgentError, OSError, ValueError):
             return 1
-    serve(Path(base) / "agent", focus="--no-focus" not in argv)
+    serve(Path(base) / "agent", focus="--no-focus" not in argv,
+          keyboard="--no-focus" not in argv or "--steam-keyboard" in argv)
     return 0
 
 

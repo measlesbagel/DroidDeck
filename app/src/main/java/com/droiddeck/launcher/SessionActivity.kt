@@ -215,7 +215,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback, com.droidde
                 if (!resumed || isDestroyed || pipUi || SessionState.suspended) return@post
                 when (command) {
                     InputCommand.MENU -> { releasePads(); drawerOpen = true }
-                    InputCommand.KEYBOARD -> if (role == InputRole.PRIMARY || secondScreenPresentation?.showKeyboard() != true) togglePcKeyboard()
+                    InputCommand.KEYBOARD -> if (role == InputRole.PRIMARY || secondScreenPresentation?.showKeyboard() != true) openKeyboard()
                     InputCommand.STEAM -> tapSteamButton()
                     InputCommand.QUICK_ACCESS -> tapQam()
                 }
@@ -995,7 +995,13 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback, com.droidde
                     if (::surfaceView.isInitialized) applyFrameGen()
                 }
             }
-            androidx.compose.runtime.LaunchedEffect(AgentGuest.steamKeyboard) { updateOnScreenControls() }
+            androidx.compose.runtime.LaunchedEffect(AgentGuest.steamKeyboard) {
+                updateOnScreenControls()
+                if (SessionState.mode == SessionService.MODE_DESKTOP) {
+                    releasePads()
+                    refreshInputProfile()
+                }
+            }
             androidx.compose.runtime.LaunchedEffect(AgentGuest.desktopTextField) { onDesktopTextField(AgentGuest.desktopTextField) }
             androidx.compose.runtime.LaunchedEffect(AgentGuest.gameTextField, AgentGuest.gameProgram) { onGameTextField(AgentGuest.gameTextField) }
             androidx.compose.runtime.LaunchedEffect(wowChat.request) { placeWowChat() }
@@ -3259,6 +3265,32 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback, com.droidde
     }
 
 
+    private val steamKeyboardRequests = java.util.concurrent.Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "steam-keyboard").apply { isDaemon = true }
+    }
+
+    private fun openKeyboard() {
+        if (SessionState.mode == SessionService.MODE_DESKTOP && AgentGuest.steamKeyboard) return
+        if (SessionState.mode != SessionService.MODE_DESKTOP || pcKeyboardOpen) {
+            togglePcKeyboard()
+            return
+        }
+        runCatching { steamKeyboardRequests.execute { openSteamKeyboard() } }.onFailure { togglePcKeyboard() }
+    }
+
+    private fun openSteamKeyboard() {
+        val request = org.json.JSONObject()
+            .put("kind", "exec")
+            .put("argv", org.json.JSONArray(listOf("/usr/local/bin/droiddeck-steam-launch", "desktop", "steam://open/keyboard")))
+            .put("env", org.json.JSONObject().put("BL_DESKTOP", "1"))
+            .put("timeout", 5.0)
+        val result = runCatching { AgentGuest.call(this, request, 8_000, trusted = true) }
+        val answer = result.getOrNull()
+        if (answer?.optBoolean("ok") == true && answer.optInt("exitCode", -1) == 0 && !answer.optBoolean("timedOut")) return
+        Log.i(TAG, "Steam keyboard not opened, using the PC keyboard: ${result.exceptionOrNull() ?: answer?.optInt("exitCode")}")
+        uiHandler.post { if (!isDestroyed && !pcKeyboardOpen) togglePcKeyboard() }
+    }
+
     private val relativeMouseRequests = java.util.concurrent.Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "relative-mouse").apply { isDaemon = true }
     }
@@ -3813,7 +3845,9 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback, com.droidde
     private fun refreshInputProfile() {
         val library = com.droiddeck.launcher.input.InputLibraries.read(this)
         val desktop = loadingMode() == SessionService.MODE_DESKTOP
-        inputProfile = library.compileActive(desktop, secondScreenMode.panel(this))
+        inputProfile = library.compileActive(desktop, secondScreenMode.panel(this)).let { profile ->
+            if (desktop && AgentGuest.steamKeyboard) profile.copy(bindings = profile.bindings - InputRole.PHYSICAL) else profile
+        }
         primaryInputLayout = library.activeLayout(desktop, InputRole.PRIMARY)
         adaptiveSticks = primaryInputLayout?.adaptiveSticks
         quickButtons = primaryInputLayout?.takeIf { it.editable }?.let { l -> l.quickButtons.associateWith { it !in l.style.hidden } }.orEmpty()
@@ -5665,6 +5699,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback, com.droidde
         if (AgentGuest.readyListener === agentReadyListener) AgentGuest.readyListener = null
         com.droiddeck.launcher.input.HomeButtonShortcuts.detach(this)
         relativeMouseRequests.shutdownNow()
+        steamKeyboardRequests.shutdownNow()
         backQamInput.cancel()
         steamVrRecovery.close()
         uiHandler.removeCallbacks(steamTouchRetry)
