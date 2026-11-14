@@ -1688,6 +1688,8 @@
     <string name="session_swap_failed">Swap failed: %1$s</string>
     <string name="session_profile_save_failed">Profile save failed: %1$s</string>
     <string name="session_desktop_paused">The desktop is paused</string>
+    <string name="session_pad_desktop_mouse">Controller: mouse and keyboard</string>
+    <string name="session_pad_desktop_gamepad">Controller: gamepad</string>
     <string name="session_named_paused">%1$s is paused</string>
     <string name="session_program_paused">The program is paused</string>
     <string name="session_starting_desktop">Starting the desktop</string>

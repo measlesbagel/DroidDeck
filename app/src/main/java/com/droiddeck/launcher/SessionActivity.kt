@@ -79,6 +79,7 @@ import com.droiddeck.launcher.input.OnScreenControls
 import com.droiddeck.launcher.input.PadBridge
 import com.droiddeck.launcher.input.PhysicalShortcuts
 import com.droiddeck.launcher.input.PhysicalShortcutRouter
+import com.droiddeck.launcher.input.DesktopPadMouse
 import com.droiddeck.launcher.input.PadMouse
 import com.droiddeck.launcher.input.PadState
 import com.droiddeck.launcher.input.ScreenKeys
@@ -254,6 +255,10 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
     private lateinit var padMouse: PadMouse
     @Volatile private var padMouseOn = false
     private var padMouseCheckedAt = 0L
+    private lateinit var desktopPadMouse: DesktopPadMouse
+    private var desktopPadMouseOn = false
+    private var padCursorX = 0f
+    private var padCursorY = 0f
     private var scrollTouchGesture = false
     private var scrollRestX = 0f
     private var scrollRestY = 0f
@@ -600,6 +605,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
             joyConVr?.refresh()
             padBridge?.onDeviceRemoved(deviceId)
             if (::padMouse.isInitialized) padMouse.reset()
+            if (::desktopPadMouse.isInitialized) desktopPadMouse.reset()
             refreshControls()
             updatePointerCapture()
             updateHandCamera()
@@ -786,6 +792,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
             } else onTouchEvent(event)
         }
         padMouse = PadMouse(padMouseListener)
+        desktopPadMouse = DesktopPadMouse(desktopPadMouseListener)
         bridge.setTouchRoute(object : PadBridge.TouchRoute {
             override fun active(): Boolean = if (Looper.myLooper() == Looper.getMainLooper()) padMouseMode() else padMouseOn
             override fun accept(state: PadState) {
@@ -1167,7 +1174,10 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
                 }
                 androidx.compose.runtime.LaunchedEffect(pcKeyboardOpen) { if (pcKeyboardOpen) releasePads(); updateOnScreenControls() }
                 LaunchedEffect(pcKeyboardOpen, drawerOpen, achievementsOpen) {
-                    if (pcKeyboardOpen || drawerOpen || achievementsOpen) padMouse.reset()
+                    if (pcKeyboardOpen || drawerOpen || achievementsOpen) {
+                        padMouse.reset()
+                        desktopPadMouse.reset()
+                    }
                 }
                 if (pcKeyboardOpen) com.droiddeck.launcher.ui.PcKeyboard(
                     sendKey = { code, down -> if (CompositorHost.isStarted) sendGuestKey(code, down) },
@@ -2772,10 +2782,15 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
             }
             return true
         }
+        if (pcKeyboardOpen && fromController && event.keyCode == KeyEvent.KEYCODE_BUTTON_Y && desktopPadMouseMode() && desktopPadMouse.enabled) {
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) pcKeyboardOpen = false
+            return true
+        }
         if ((pcKeyboardOpen || achievementsOpen) && fromController) return super.dispatchKeyEvent(event)
         if (!fromController && event.keyCode != KeyEvent.KEYCODE_BACK && sendToTopDesktop(event)) return true
         if (joyConVr?.onKeyEvent(event) == true) return true
         if (fromController && event.keyCode != KeyEvent.KEYCODE_BACK && padMouseMode() && padMouse.onKey(event)) return true
+        if (fromController && event.keyCode != KeyEvent.KEYCODE_BACK && desktopPadMouseMode() && desktopPadMouse.onKey(event)) return true
         if (event.keyCode != KeyEvent.KEYCODE_BACK && padBridge?.onKeyEvent(event) == true) return true
         val keyboardKey = event.keyCode != KeyEvent.KEYCODE_BACK ||
             com.droiddeck.launcher.input.GuestKeys.isKeyboardEscape(event.keyCode, event.scanCode)
@@ -2822,6 +2837,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         if ((pcKeyboardOpen || achievementsOpen) && PadBridge.isControllerMotionEvent(event)) return super.dispatchGenericMotionEvent(event)
         if (joyConVr?.onMotionEvent(event) == true) return true
         if (PadBridge.isControllerMotionEvent(event) && padMouseMode() && padMouse.onMotion(event)) return true
+        if (PadBridge.isControllerMotionEvent(event) && desktopPadMouseMode() && desktopPadMouse.onMotion(event)) return true
         if (padBridge?.onMotionEvent(event) == true) return true
         if (event.isFromSource(android.view.InputDevice.SOURCE_MOUSE) && !drawerOpen) {
             if (appUiOwnsPointer()) {
@@ -3152,6 +3168,63 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         return on
     }
 
+    private val desktopPadMouseListener = object : DesktopPadMouse.Listener {
+        override fun active(): Boolean = desktopPadMouseMode()
+        override fun onMoveStart() {
+            val rect = pointerSurfaceRect() ?: return
+            val view = outputView()
+            if (CompositorHost.isStarted && view.width > 0 && view.height > 0 && WaylandCompositor.nativeCursorInputPos(cursorPosBuf)) {
+                padCursorX = cursorPosBuf[0] / InputSpace.WIDTH.toFloat() * view.width
+                padCursorY = cursorPosBuf[1] / InputSpace.HEIGHT.toFloat() * view.height
+            } else {
+                padCursorX = rect.centerX()
+                padCursorY = rect.centerY()
+            }
+        }
+        override fun onMove(dx: Float, dy: Float) {
+            if (pointerLocked) {
+                val rect = drawnRect() ?: return
+                val scale = sceneScale(rect)
+                sendSceneDelta(dx * scale, dy * scale)
+                return
+            }
+            val rect = pointerSurfaceRect() ?: return
+            padCursorX = (padCursorX + dx).coerceIn(rect.left, rect.right)
+            padCursorY = (padCursorY + dy).coerceIn(rect.top, rect.bottom)
+            movePointer(padCursorX, padCursorY, fromPad = true)
+        }
+        override fun onScrollStart() {
+            scrollRestX = 0f
+            scrollRestY = 0f
+        }
+        override fun onScroll(dx: Float, dy: Float) = scrollListener.onScroll(dx, dy)
+        override fun onButton(button: Int, pressed: Boolean) = sendSceneButton(button, pressed)
+        override fun onKey(evdev: Int, pressed: Boolean) = sendGuestKey(evdev, pressed)
+        override fun onKeyboard() {
+            uiHandler.post { togglePcKeyboard() }
+        }
+        override fun onToggle(on: Boolean) {
+            if (on) padBridge?.releaseAll()
+            Toast.makeText(
+                this@SessionActivity,
+                if (on) R.string.session_pad_desktop_mouse else R.string.session_pad_desktop_gamepad,
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+        override fun cursorSpeed(): Float = (pointerSurfaceRect()?.height() ?: 0f) * DESKTOP_PAD_CURSOR_HEIGHTS_PER_S
+        override fun scrollSpeed(): Float = (pointerSurfaceRect()?.height() ?: 0f) * PAD_SCROLL_HEIGHTS_PER_S
+    }
+
+    private fun desktopPadMouseMode(): Boolean {
+        if (!::desktopPadMouse.isInitialized) return false
+        val on = SessionState.mode == SessionService.MODE_DESKTOP && !bottomOutputActive &&
+            !(pointerLocked && !desktopMouseGrabAllowed())
+        if (desktopPadMouseOn && !on) desktopPadMouse.reset()
+        if (!desktopPadMouseOn && on && desktopPadMouse.enabled) padBridge?.releaseAll()
+        desktopPadMouseOn = on
+        return on
+    }
+
     private fun scrollTouchMode(): Boolean =
         (routedTouchMode == SessionPrefs.TOUCH_AUTO || routedTouchMode == SessionPrefs.TOUCH_DIRECT) && padMouseMode()
 
@@ -3190,12 +3263,12 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         cursorVisible = false
     }
 
-    private fun movePointer(x: Float, y: Float, fromMouse: Boolean = false) {
+    private fun movePointer(x: Float, y: Float, fromMouse: Boolean = false, fromPad: Boolean = false) {
         val rect = pointerSurfaceRect() ?: return
         val cx = x.coerceIn(rect.left, rect.right)
         val cy = y.coerceIn(rect.top, rect.bottom)
         WaylandCompositor.nativeSendPointer(1, InputSpace.x(cx, outputView().width), InputSpace.y(cy, outputView().height))
-        showCursor(cx, cy, fromMouse)
+        showCursor(cx, cy, fromMouse, fromPad)
     }
 
     private fun moveCapturedMouse(dx: Float, dy: Float) {
@@ -3209,7 +3282,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         )
     }
 
-    private fun showCursor(x: Float, y: Float, fromMouse: Boolean = false) {
+    private fun showCursor(x: Float, y: Float, fromMouse: Boolean = false, fromPad: Boolean = false) {
         cursorPos = androidx.compose.ui.geometry.Offset(x, y)
         syncClientCursor()
         mouseOwnsCursor = fromMouse
@@ -3217,7 +3290,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         cursorResyncIdle = 0
         if (fromMouse || !touchDrivesPointer()) uiHandler.postDelayed(cursorResync, 60)
         if (clientHidesCursor) { cursorVisible = false; return }
-        if (!fromMouse && directTouchCursorHidden()) { cursorVisible = false; return }
+        if (!fromMouse && !fromPad && directTouchCursorHidden()) { cursorVisible = false; return }
         if (android.os.SystemClock.uptimeMillis() - lastPadInputMs < CURSOR_PAD_HOLD_MS) return
         cursorVisible = true
         uiHandler.removeCallbacks(cursorHide)
@@ -4585,6 +4658,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         onScreenControls?.releaseAll()
         if (::scrollTouch.isInitialized) scrollTouch.cancel()
         if (::padMouse.isInitialized) padMouse.reset()
+        if (::desktopPadMouse.isInitialized) desktopPadMouse.reset()
         resumed = false
         updatePointerCapture()
         updatePadMotion()
@@ -5131,6 +5205,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         if (!hasFocus) backQamInput.cancel()
         if (!hasFocus) mouseBackInput.cancel()
         if (!hasFocus && ::padMouse.isInitialized) padMouse.reset()
+        if (!hasFocus && ::desktopPadMouse.isInitialized) desktopPadMouse.reset()
         if (runtimeRemovalBlocked) return
         if (!hasFocus) {
             if (::touchscreenGestures.isInitialized) touchscreenGestures.cancel()
@@ -5297,6 +5372,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         private const val PAD_MOUSE_CHECK_MS = 500L
         private const val PAD_SCROLL_POINTER_X = 0.985f
         private const val PAD_SCROLL_HEIGHTS_PER_S = 3f
+        private const val DESKTOP_PAD_CURSOR_HEIGHTS_PER_S = 1.6f
         private const val AXIS_UNITS_PER_PIXEL = 3f
         private const val KEY_LEFTCTRL = 29
         private const val KEY_RIGHTCTRL = 97
