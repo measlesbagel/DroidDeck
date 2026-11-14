@@ -174,8 +174,7 @@ class DesktopPadMouse(private val listener: Listener) {
         held?.remove(event.keyCode)
         val wasSwallowed = swallowed.remove(id)
         if (enabled && wasSwallowed && device !in chordFired) {
-            if (event.keyCode == KeyEvent.KEYCODE_BUTTON_START) tap(KEY_LEFTMETA)
-            else tap(KEY_LEFTALT, KEY_TAB)
+            tap(if (event.keyCode == KeyEvent.KEYCODE_BUTTON_START) KEY_LEFTMETA else KEY_TAB)
         }
         if (held.isNullOrEmpty()) {
             chordHeld.remove(device)
@@ -251,9 +250,10 @@ class DesktopPadMouse(private val listener: Listener) {
         const val BTN_RIGHT = PointerGestures.BTN_RIGHT
         const val BTN_MIDDLE = PointerGestures.BTN_MIDDLE
         private const val KEY_ESC = 1
-        private const val KEY_BACKSPACE = 14
         private const val KEY_TAB = 15
         private const val KEY_ENTER = 28
+        private const val KEY_LEFTCTRL = 29
+        private const val KEY_SPACE = 57
         private const val KEY_LEFTALT = 56
         private const val KEY_UP = 103
         private const val KEY_LEFT = 105
@@ -271,13 +271,13 @@ class DesktopPadMouse(private val listener: Listener) {
         private const val SOURCE_TRIGGER = 2
 
         private val ACTIONS = mapOf(
-            KeyEvent.KEYCODE_BUTTON_A to BTN_LEFT,
-            KeyEvent.KEYCODE_BUTTON_B to BTN_RIGHT,
+            KeyEvent.KEYCODE_BUTTON_A to KEY_ENTER,
+            KeyEvent.KEYCODE_BUTTON_B to KEY_ESC,
+            KeyEvent.KEYCODE_BUTTON_X to KEYBOARD,
+            KeyEvent.KEYCODE_BUTTON_Y to KEY_SPACE,
+            KeyEvent.KEYCODE_BUTTON_L1 to KEY_LEFTCTRL,
+            KeyEvent.KEYCODE_BUTTON_R1 to KEY_LEFTALT,
             KeyEvent.KEYCODE_BUTTON_THUMBR to BTN_MIDDLE,
-            KeyEvent.KEYCODE_BUTTON_X to KEY_BACKSPACE,
-            KeyEvent.KEYCODE_BUTTON_Y to KEYBOARD,
-            KeyEvent.KEYCODE_BUTTON_L1 to KEY_ESC,
-            KeyEvent.KEYCODE_BUTTON_R1 to KEY_ENTER,
             KeyEvent.KEYCODE_BUTTON_THUMBL to PRECISION,
             KeyEvent.KEYCODE_DPAD_UP to KEY_UP,
             KeyEvent.KEYCODE_DPAD_DOWN to KEY_DOWN,

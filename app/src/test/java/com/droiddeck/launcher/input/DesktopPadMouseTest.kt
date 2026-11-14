@@ -74,61 +74,60 @@ class DesktopPadMouseTest {
         assertEquals(listOf("scroll start"), events)
     }
 
-    @Test fun faceButtonsAndTriggersClick() {
-        key(KeyEvent.KEYCODE_BUTTON_A, true)
-        key(KeyEvent.KEYCODE_BUTTON_A, false)
-        key(KeyEvent.KEYCODE_BUTTON_B, true)
-        key(KeyEvent.KEYCODE_BUTTON_B, false)
-        key(KeyEvent.KEYCODE_BUTTON_THUMBR, true)
-        key(KeyEvent.KEYCODE_BUTTON_THUMBR, false)
+    @Test fun triggersAndRightStickClick() {
         motion(rightTrigger = 1f)
         motion(rightTrigger = 0.4f)
         motion()
         motion(leftTrigger = 1f)
         motion()
+        key(KeyEvent.KEYCODE_BUTTON_THUMBR, true)
+        key(KeyEvent.KEYCODE_BUTTON_THUMBR, false)
         assertEquals(listOf(
             "button 272 down", "button 272 up",
             "button 273 down", "button 273 up",
             "button 274 down", "button 274 up",
-            "button 272 down", "button 272 up",
-            "button 273 down", "button 273 up",
         ), events)
     }
 
-    @Test fun aAndTheTriggerShareOneHeldLeftButtonForDragging() {
-        key(KeyEvent.KEYCODE_BUTTON_A, true)
-        motion(rightTrigger = 1f)
-        key(KeyEvent.KEYCODE_BUTTON_A, false)
-        assertEquals(listOf("button 272 down"), events)
-        motion()
-        assertEquals(listOf("button 272 down", "button 272 up"), events)
-    }
-
-    @Test fun buttonsTypeKeysAndYOpensTheKeyboard() {
-        for (code in intArrayOf(KeyEvent.KEYCODE_BUTTON_X, KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_BUTTON_R1, KeyEvent.KEYCODE_DPAD_UP)) {
+    @Test fun faceButtonsTypeKeysLikeASteamDeckAndXOpensTheKeyboard() {
+        for (code in intArrayOf(KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BUTTON_Y, KeyEvent.KEYCODE_DPAD_UP)) {
             key(code, true)
             key(code, false)
         }
-        key(KeyEvent.KEYCODE_BUTTON_Y, true)
-        key(KeyEvent.KEYCODE_BUTTON_Y, false)
+        key(KeyEvent.KEYCODE_BUTTON_X, true)
+        key(KeyEvent.KEYCODE_BUTTON_X, false)
         motion(hatX = 1f)
         motion()
         assertEquals(listOf(
-            "key 14 down", "key 14 up", "key 1 down", "key 1 up", "key 28 down", "key 28 up", "key 103 down", "key 103 up",
+            "key 28 down", "key 28 up", "key 1 down", "key 1 up", "key 57 down", "key 57 up", "key 103 down", "key 103 up",
             "keyboard", "key 106 down", "key 106 up",
         ), events)
     }
 
-    @Test fun startOpensTheMenuAndSelectSwitchesWindows() {
+    @Test fun bumpersHoldCtrlAndAltSoSelectGivesAltTab() {
+        key(KeyEvent.KEYCODE_BUTTON_R1, true)
+        key(KeyEvent.KEYCODE_BUTTON_SELECT, true)
+        key(KeyEvent.KEYCODE_BUTTON_SELECT, false)
+        key(KeyEvent.KEYCODE_BUTTON_SELECT, true)
+        key(KeyEvent.KEYCODE_BUTTON_SELECT, false)
+        key(KeyEvent.KEYCODE_BUTTON_R1, false)
+        key(KeyEvent.KEYCODE_BUTTON_L1, true)
+        key(KeyEvent.KEYCODE_BUTTON_L1, false)
+        assertEquals(listOf(
+            "key 56 down", "key 15 down", "key 15 up", "key 15 down", "key 15 up", "key 56 up", "key 29 down", "key 29 up",
+        ), events)
+    }
+
+    @Test fun startOpensTheMenuAndSelectTypesTab() {
         key(KeyEvent.KEYCODE_BUTTON_START, true)
         key(KeyEvent.KEYCODE_BUTTON_START, false)
         key(KeyEvent.KEYCODE_BUTTON_SELECT, true)
         key(KeyEvent.KEYCODE_BUTTON_SELECT, false)
-        assertEquals(listOf("key 125 down", "key 125 up", "key 56 down", "key 15 down", "key 15 up", "key 56 up"), events)
+        assertEquals(listOf("key 125 down", "key 125 up", "key 15 down", "key 15 up"), events)
     }
 
     @Test fun selectWithStartHandsTheControllerBackToGamesAndBack() {
-        key(KeyEvent.KEYCODE_BUTTON_A, true)
+        motion(rightTrigger = 1f)
         key(KeyEvent.KEYCODE_BUTTON_SELECT, true)
         key(KeyEvent.KEYCODE_BUTTON_START, true)
         key(KeyEvent.KEYCODE_BUTTON_START, false)
@@ -145,7 +144,7 @@ class DesktopPadMouseTest {
     }
 
     @Test fun resetLetsGoOfHeldButtons() {
-        key(KeyEvent.KEYCODE_BUTTON_A, true)
+        motion(rightTrigger = 1f)
         key(KeyEvent.KEYCODE_DPAD_LEFT, true)
         pad.reset()
         assertEquals(listOf("button 272 down", "key 105 down", "key 105 up", "button 272 up"), events)

@@ -2782,7 +2782,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
             }
             return true
         }
-        if (pcKeyboardOpen && fromController && event.keyCode == KeyEvent.KEYCODE_BUTTON_Y && desktopPadMouseMode() && desktopPadMouse.enabled) {
+        if (pcKeyboardOpen && fromController && event.keyCode == KeyEvent.KEYCODE_BUTTON_X && desktopPadMouseMode() && desktopPadMouse.enabled) {
             if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) pcKeyboardOpen = false
             return true
         }
