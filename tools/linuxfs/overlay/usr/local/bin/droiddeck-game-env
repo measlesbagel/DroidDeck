@@ -495,6 +495,43 @@ def death_stranding_allocator(app_id, exe):
     return True
 
 
+WMV_EXTENSION_KEYS = ["Software\\Classes\\%sMedia Type\\Extensions\\%s" % (view, ext)
+                      for view in ("", "Wow6432Node\\") for ext in (".wmv", ".asf")]
+WMV_FILE_SOURCE = {
+    "Media Type": "{e436eb83-524f-11ce-9f53-0020af0ba770}",
+    "Subtype": "{6b6d0801-9ada-11d0-a520-00a0d10129c0}",
+    "Source Filter": "{e436ebb5-524f-11ce-9f53-0020af0ba770}",
+}
+
+
+def wmv_file_source(compat, env):
+    """DROIDDECK_WMV_FILE_SOURCE=1 makes Wine open the game's .wmv/.asf files with File Source (Async.) and its
+    GStreamer parser, as upstream Wine does, instead of the WM ASF Reader Proton registers. Wine reads a file
+    extension's Media Type key before the byte patterns, and no Wine or Proton update writes that key."""
+    hive = Path(compat) / "pfx/system.reg"
+    if not compat or not hive.is_file():
+        return
+    on = env.get("DROIDDECK_WMV_FILE_SOURCE") == "1"
+    try:
+        if not on and "Media Type\\\\Extensions\\\\.wmv]" not in hive.read_text(encoding="utf-8", errors="replace"):
+            return
+        registry = runpy.run_path(str(Path(__file__).resolve().parent / "droiddeck-wincomponents"))
+        reg = registry["RegistryFile"](hive)
+        line = lambda name: registry["reg_value_line"](name, "sz", WMV_FILE_SOURCE[name])
+        for key in WMV_EXTENSION_KEYS:
+            if on:
+                for name in WMV_FILE_SOURCE:
+                    reg.put(key, name, line(name))
+            elif reg.get(key, "Source Filter") == line("Source Filter"):
+                reg.remove_key(key)
+        if reg.changed:
+            reg.save()
+            print("droiddeck-game-env: .wmv/.asf files open with %s" %
+                  ("File Source (Async.)" if on else "the prefix's own source filter again"), file=sys.stderr)
+    except (OSError, ValueError, KeyError) as error:
+        print("droiddeck-game-env: .wmv/.asf source filter left as is (%s)" % error, file=sys.stderr)
+
+
 def win_components(compat, app_id, proton=None, env=None):
     if not compat:
         return ""
@@ -1603,6 +1640,7 @@ def main():
             print("droiddeck-game-env: invalid configuration; using inherited environment", file=sys.stderr)
     if waiting:
         components = win_components(prefix_path, app_id, command[0], effective_env)
+        wmv_file_source(prefix_path, effective_env)
     if prefix_path and command:
         try:
             restored = restore_compatible_system_dlls(prefix_path, command[0], effective_env)

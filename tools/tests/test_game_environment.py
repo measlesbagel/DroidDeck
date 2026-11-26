@@ -37,6 +37,20 @@ class SupergiantDotnetReporterTest(unittest.TestCase):
         self.assertIsNone(MODULE["supergiant_dotnet_reporter"](game))
 
 
+class WmvFileSourceTest(unittest.TestCase):
+    def test_on_adds_the_extension_keys_and_off_removes_them(self):
+        original = "WINE REGISTRY Version 2\n\n[Software\\\\Classes\\\\Media Type\\\\Extensions\\\\.mp3] 1794497161\n" \
+                   '"Source Filter"="{e436ebb5-524f-11ce-9f53-0020af0ba770}"\n'
+        with tempfile.TemporaryDirectory() as compat, contextlib.redirect_stderr(io.StringIO()):
+            hive = Path(compat) / "pfx/system.reg"
+            hive.parent.mkdir()
+            hive.write_text(original, encoding="utf-8")
+            MODULE["wmv_file_source"](compat, {"DROIDDECK_WMV_FILE_SOURCE": "1"})
+            self.assertEqual(4, hive.read_text(encoding="utf-8").count('"Subtype"="{6b6d0801-9ada-11d0-a520-00a0d10129c0}"'))
+            MODULE["wmv_file_source"](compat, {})
+            self.assertEqual(original, hive.read_text(encoding="utf-8"))
+
+
 class DeathStrandingAllocatorTest(unittest.TestCase):
     def make_exe(self, name="ds.exe", size=None, window=None, tail=None):
         folder = tempfile.mkdtemp()
